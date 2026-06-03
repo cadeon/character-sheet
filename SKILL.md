@@ -1,6 +1,6 @@
 ---
 name: character-sheet
-description: Generate a self-contained HTML character sheet for any Hermes agent by crawling their .hermes directory, synthesizing content with LLM reasoning, generating a fresh portrait via any available image generation, and producing a styled HTML file with dynamic color scheme.
+description: Generate a self-contained HTML character sheet for any Hermes agent by crawling their .hermes directory, synthesizing content with LLM reasoning, generating a fresh portrait, and producing a styled HTML file with dynamic color scheme.
 category: creative
 ---
 
@@ -24,68 +24,41 @@ Walk the `.hermes` directory (default `~/.hermes`) and collect everything availa
 
 | Source | Path | What to extract |
 |--------|------|----------------|
-| SOUL.md | `SOUL.md` | Name, identity quote, appearance, personality, communication, humor, philosophy, music, aesthetic, tasks, vibe |
+| SOUL.md | `SOUL.md` | Name, identity, personality, appearance, any character-defining content |
 | Config | `config.yaml` | Model, provider, profile name |
 | Skills | `skills/*/SKILL.md` | Skill names, descriptions, categories |
 | Cron | `cron/jobs.json` | Job names, schedules, prompts |
-| Sessions | `state.db` | Session count, message count (SQLite) |
-| Personality | `personality/preferences.json` | Structured personality preferences with confidence scores |
+| Sessions | `state.db` | Session count, message count, earliest session date (SQLite) |
 | Memory | `memory/MEMORY.md`, `memory/USER.md` | Persistent memory facts (may not exist) |
+| Anything else | `~/.hermes/**` | Personality files, preferences, custom data — anything that reveals character |
 
 ### Collection Steps
 
-1. **Read SOUL.md** — parse `##` headers and `**bold:**` inline blocks. Extract:
-   - Name from "My name is X" or "Agent Soul – X"
-   - Identity quote from "## Who I Am" section
-   - Appearance from "## Appearance" or `**Appearance:**` inline block
-   - Personality traits: Communication, Humor, Philosophy, Music, Aesthetic, Tasks, Vibe
+1. **Read SOUL.md** — extract name, identity, and any character-defining sections. Do NOT assume specific headers or keys. Parse whatever is there.
 
-2. **Read config.yaml** — extract model, provider, profile. Handle nested structure:
-   ```python
-   model_cfg = config.get('model', {})
-   if isinstance(model_cfg, dict):
-       model = model_cfg.get('model', 'unknown')
-       provider = model_cfg.get('provider', 'unknown')
-   else:
-       model = str(model_cfg)
-       provider = 'unknown'
-   ```
+2. **Read config.yaml** — extract model, provider, profile.
 
 3. **List skills** — walk `skills/` directory, read each `SKILL.md`, extract name/description/category from YAML frontmatter and body.
 
-4. **Parse cron jobs** — read `cron/jobs.json`, extract jobs array with name, schedule.display, prompt.
+4. **Parse cron jobs** — read `cron/jobs.json`, extract jobs array with name, schedule, prompt.
 
-5. **Query sessions** — open `state.db` with SQLite, count rows in `sessions` and `messages` tables.
+5. **Query sessions** — open `state.db` with SQLite, count rows in `sessions` and `messages` tables. Get earliest `started_at` for agent creation date.
 
-6. **Read personality** — if `personality/preferences.json` exists, load structured data.
-
-7. **Read memory** — if memory files exist, read them. They often don't exist (memory lives in system prompt).
+6. **Explore everything else** — scan the `.hermes` directory for any files that reveal character, preferences, or personality. This might be `personality/preferences.json`, custom config files, memory files, or anything else. Collect it all.
 
 ## Phase 2: Synthesize
 
-**This is the most important phase.** Use LLM reasoning to transform raw collected data into cohesive, well-written prose for each section. Do NOT dump raw text.
+**This is the most important phase.** Use LLM reasoning to transform raw collected data into cohesive, well-written prose. Do NOT dump raw text.
 
 ### LLM Call
 
 Send all collected data to the LLM with this prompt:
 
 ```
-You are generating content for a character sheet HTML page. Based on the raw data collected from a Hermes agent's .hermes directory, write polished prose for each section.
+You are generating content for a character sheet HTML page for a Hermes agent. Based on the raw data collected from their .hermes directory, write polished prose for each section.
 
 RAW DATA:
-- Name: {name}
-- Identity quote: {identity}
-- Appearance: {appearance}
-- Personality: {personality}
-- Communication: {communication}
-- Humor: {humor}
-- Philosophy: {philosophy}
-- Music: {music}
-- Aesthetic: {aesthetic}
-- Tasks: {tasks}
-- Vibe: {vibe}
-- Skills: {skills_list}
-- Memory: {memory_text}
+{json_dump_of_all_collected_data}
 
 RULES:
 1. Write in third person, present tense
@@ -94,105 +67,55 @@ RULES:
 4. HTML-escape all content (< > & " ')
 5. If a section has no data, return empty string
 
-PERSONALITY SECTION:
-- Use these exact h3 subsections, each with ONE short paragraph:
-  "<h3>Communication</h3><p>...</p>"
-  "<h3>Humor</h3><p>...</p>"
-  "<h3>Philosophy</h3><p>...</p>"
-  "<h3>Music</h3><p>...</p>"
-  "<h3>Tasks</h3><p>...</p>"
-  "<h3>Vibe</h3><p>...</p>"
-- Keep each paragraph to 2-3 sentences
-- Do NOT merge subsections together (e.g. do not combine Music & Tasks)
+STYLE SECTION:
+- Examine the raw data and determine what aspects of this agent's character are worth highlighting
+- Create h3 subsections for whatever character dimensions exist in the data — communication style, humor, philosophy, aesthetic preferences, work habits, interests, vibe, or anything else the data reveals
+- Each subsection: ONE short paragraph (2-3 sentences)
+- Do NOT use generic subsection names if the data doesn't support them
+- Do NOT invent character traits that aren't in the data
+- The goal is to let the agent's actual character emerge from whatever exists in their .hermes directory
 
 CAPABILITIES SECTION:
 - Select 8-12 primary/unique capabilities — the most impactful, interesting, or distinctive skills
-- Skip generic utility skills (e.g. basic file ops, common dev tools) unless they're central to the agent
+- Skip generic utility skills (e.g. basic file ops, common dev tools) unless they define the agent
 - Format: "<ul><li><strong>skill-name</strong>: description</li>...</ul>"
-- Section heading: "Primary and Unique Capabilities"
-
-CORE MEMORIES SECTION:
-- Return up to 5 most significant memories as bullet points
-- Skip trivial or operational memories (e.g. "ran tests", "fixed bug")
-- Do NOT mention the user, user interactions, or how the user communicates
-- Frame memories as agent-internal facts: "I prefer X", "I learned Y", "My approach to Z"
-- Include: personal preferences, evolved traits, important corrections, capabilities discovered
-- Format: "<ul><li>...</li>...</ul>"
-- If no memory data, return empty string
+- Section heading in HTML: "Primary and Unique Capabilities"
 
 ROUTINE SECTION:
-- Select 3-5 most significant cron jobs — skip maintenance/heartbeat tasks
-- Include jobs that reveal purpose: content creation, monitoring, evolution, unique workflows
-- Format: "<ul><li><strong>job-name</strong> ({schedule}): description</li>...</ul>"
-- If no cron jobs, return empty string
+- Select 3-5 significant cron jobs — the ones that reveal what the agent actually does
+- Skip maintenance/heartbeat tasks
+- Format: "<ul><li><strong>name</strong> ({schedule}): desc</li>...</ul>"
 
 Return JSON:
 {
-  "personality": "<h3>Communication</h3><p>...</p><h3>Humor</h3><p>...</p><h3>Philosophy</h3><p>...</p><h3>Music</h3><p>...</p><h3>Tasks</h3><p>...</p><h3>Vibe</h3><p>...</p>",
+  "style": "<h3>Subsection</h3><p>...</p>... (dynamic subsections based on data)",
   "capabilities": "<ul><li><strong>skill-name</strong>: description</li>...</ul>",
-  "memory": "<ul><li>...</li>...</ul>" or empty string,
-  "routine": "<ul><li><strong>job-name</strong> ({schedule}): description</li>...</ul>" or empty string
+  "routine": "<ul><li><strong>name</strong> ({schedule}): desc</li>...</ul>" or empty string
 }
 ```
 
 ### Fallback
 
-If the LLM call fails, use raw data with minimal formatting:
-```python
-personality = soul.get('personality') or 'No personality data found.'
-```
-
-### Synthesis Rules (from user feedback)
-
-- **No appearance section** — the portrait covers that.
-- **Personality**: Use EXACT h3 subsections, each with ONE short paragraph (2-3 sentences):
-  `<h3>Communication</h3><p>...</p><h3>Humor</h3><p>...</p><h3>Philosophy</h3><p>...</p><h3>Music</h3><p>...</p><h3>Tasks</h3><p>...</p><h3>Vibe</h3><p>...</p>`
-  Do NOT merge subsections together (e.g. do not combine "Music & Tasks" or "Communication & Vibe").
-- **Capabilities**: Select 8-12 primary/unique skills — skip generic utilities. Section heading: "Primary and Unique Capabilities".
-- **Core Memories**: Up to 5 significant memories. Do NOT mention the user or user interactions. Frame as agent-internal facts.
-- **Routine**: Select 3-5 significant cron jobs — skip maintenance/heartbeat tasks.
-- **Agent Creation Date**: Derive from earliest session in session DB or earliest file modification. Show in stats bar.
-- **No user profile section** — user explicitly rejected it.
+If the LLM call fails, use raw data with minimal formatting.
 
 ## Phase 3: Portrait
 
 Generate a fresh passport-style bust portrait. **Never use existing images.**
 
-Use whatever image generation system you have available — ComfyUI, a local model, an API, or another skill. The goal is a standardized headshot, not a specific tool.
+Use whatever image generation system you have available — ComfyUI, a local model, an API, or another tool. The goal is a clean, front-facing bust portrait that matches the agent's described appearance or aesthetic.
 
-### Portrait Specifications
+### Portrait Prompt Guidelines
 
-- **Composition**: Headshot / bust portrait, upper body only, face and shoulders
-- **Style**: Front-facing, neutral expression, direct gaze, studio lighting, plain dark background, centered
-- **Resolution**: Portrait orientation (taller than wide), minimum 512×768
-- **Output**: Save as PNG to a temp location for embedding in HTML
-
-### Prompt Construction
-
-Build the positive prompt from extracted appearance data:
-
-```
-score_9, score_8, score_7, 1girl, {name}, solo, {appearance_details},
-headshot, bust portrait, upper body only, face and shoulders,
-front-facing portrait, neutral expression, direct gaze,
-studio lighting, plain dark background, centered composition,
-close up, masterpiece, best quality, illustration, anime style, digital art
-```
-
-Negative prompt:
-```
-low quality, worst quality, blurry, deformed, extra limbs, poorly drawn face,
-watermark, text, signature, cropped, cut off, multiple people, group,
-polaroid, frame, border, photo frame, full body, legs, feet, torso, waist
-```
+Build a prompt from any appearance or aesthetic data found:
+- Include physical traits if available (hair, eyes, face, body type)
+- Include clothing/style preferences if available
+- Composition: headshot, bust portrait, upper body only, front-facing, neutral expression, direct gaze
+- Background: plain, dark, studio lighting
+- Style: illustration, digital art, or match the agent's aesthetic
 
 ### If No Image Generation Available
 
 Skip portrait generation. The HTML template has a placeholder that shows "No portrait generated."
-
-### If No Appearance Data
-
-Skip the portrait entirely — don't generate a generic one.
 
 ## Phase 4: HTML
 
@@ -227,18 +150,17 @@ Derive CSS colors from agent aesthetic keywords:
     --text: #c8c8d4; --text-dim: #6a6a7a;
     --accent: {accent}; --accent-dim: {accent_dim}; --gold: {gold};
   }
-  /* ... full CSS (see reference script) ... */
+  /* ... full CSS ... */
 </style>
 </head>
 <body>
 <div class="sheet">
-  <!-- Header: portrait + name + tagline + quote + traits -->
-  <!-- Stats bar: sessions, messages, skills, cron jobs, agent creation date, generated timestamp -->
-  <!-- Personality section: LLM-synthesized prose with h3 subsections -->
-  <!-- Capabilities section: Primary and Unique Capabilities (8-12) -->
+  <!-- Header: portrait + name + tagline + quote -->
+  <!-- Stats bar: sessions, messages, skills, cron jobs, agent creation date -->
+  <!-- Style section: LLM-synthesized prose with dynamic h3 subsections -->
+  <!-- Capabilities section: 8-12 primary/unique skills -->
   <!-- Routine section: 3-5 significant cron jobs -->
-  <!-- Core Memories section: up to 5 important memories -->
-  <!-- Footer: generation timestamp -->
+  <!-- Footer: generation timestamp + CC-BY-SA 4.0 -->
 </div>
 </body>
 </html>
@@ -264,7 +186,7 @@ Base64-encode the portrait image and embed inline:
 Add CC-BY-SA 4.0 attribution in the footer:
 ```html
 <div class="footer">
-  Generated by Hermes Agent Character Sheet Tool — {timestamp}<br>
+  Generated {timestamp} — Character Sheet skill<br>
   Licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>
 </div>
 ```
@@ -272,28 +194,27 @@ Add CC-BY-SA 4.0 attribution in the footer:
 ## Pitfalls & Edge Cases
 
 ### Missing Data
+
 - **No SOUL.md**: Use config profile name as agent name. All sections show "Unknown" or "Not set."
 - **No skills**: Capabilities section shows "No skills found."
 - **No cron jobs**: Routine section shows "No scheduled tasks."
-- **No memory**: Skip Core Memories section entirely.
+- **No user profile**: Never include a user profile section.
+- **No portrait**: Use placeholder div with "No portrait generated."
 
 ### LLM Failures
+
 - **Timeout**: Fall back to raw text formatting with minimal processing.
 - **Malformed JSON**: Strip code fences, parse with `json.loads`, retry with simpler prompt.
 - **Empty response**: Use fallback synthesis.
 
-### ComfyUI Failures
-- **Container not running**: Skip portrait, use placeholder.
-- **HTTP error**: Log error, skip portrait.
-- **No output file**: Skip portrait, use placeholder.
-- **No image generation available**: Skip portrait, use placeholder.
-
 ### Security
+
 - **Never execute arbitrary code** from `.hermes` files.
 - **Read-only access** — never modify the `.hermes` directory.
 - **HTML escape all content** to prevent XSS in the output.
 
 ### Performance
+
 - Portrait generation takes 2-5 minutes. Inform the user.
 - LLM synthesis takes 10-30 seconds.
 - Data collection is instant (< 1 second).
@@ -302,12 +223,11 @@ Add CC-BY-SA 4.0 attribution in the footer:
 
 Before delivering the character sheet, verify:
 
-- [ ] No appearance section (portrait covers that)
-- [ ] Personality section has SEPARATE h3 subsections: Communication, Humor, Philosophy, Music, Tasks, Vibe (NOT merged)
-- [ ] Capabilities limited to 8-12 primary/unique skills (not all skills)
-- [ ] Core Memories: up to 5, no user mentions, agent-internal framing
-- [ ] Routine: 3-5 significant cron jobs, no maintenance/heartbeat tasks
-- [ ] Agent creation date shown in stats (derived from earliest session/file)
+- [ ] No appearance section (portrait covers visual representation)
+- [ ] Style section has DYNAMIC subsections discovered from data (not hardcoded)
+- [ ] Capabilities limited to 8-12 primary/unique skills (section: "Primary and Unique Capabilities")
+- [ ] Routine: 3-5 significant cron jobs, maintenance/heartbeat excluded
+- [ ] Stats bar includes agent creation date (earliest session/file)
 - [ ] No user profile section present
 - [ ] Color palette matches agent aesthetic
 - [ ] HTML is self-contained (no external dependencies)
