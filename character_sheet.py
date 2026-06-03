@@ -449,6 +449,124 @@ def generate_portrait(data, output_path):
         return None
 
 
+# ─── LLM Synthesis ────────────────────────────────────────────────
+
+LLM_ENDPOINT = 'https://llm.not-really.me/v1/chat/completions'
+LLM_MODEL = 'qwen3.6-hermes-27b'
+
+
+def synthesize_sections(data):
+    """Call the LLM to generate styled prose for HTML sections from collected data."""
+    soul = data.get('soul', {})
+    skills_raw = data.get('skills', [])
+    memory = data.get('memory', {})
+    config = data.get('config', {})
+    cron_jobs = data.get('cron_jobs', [])
+    sessions = data.get('sessions', {})
+    personality = data.get('personality', {})
+
+    # Filter out yuanbao skill
+    skills = [s for s in skills_raw if s.get('name') != 'yuanbao']
+
+    # Build a clean payload for the LLM
+    payload = {
+        'soul': {k: v for k, v in soul.items() if k != 'raw'},
+        'skills': skills,
+        'memory': memory,
+        'config': config,
+        'cron_jobs': cron_jobs,
+        'sessions': sessions,
+        'personality': personality,
+    }
+
+    system_prompt = (
+        "You are generating structured HTML content for a character sheet. "
+        "Respond with valid JSON only. No markdown fences, no explanations. "
+        "Keys in the response must be exactly: appearance, personality, memory, capabilities. "
+        "Rules:\n"
+        "- Write polished, engaging prose — not raw dumps or bullet lists.\n"
+        "- 'appearance': A vivid paragraph describing the agent's physical appearance based on the data.\n"
+        "- 'personality': Well-crafted prose covering communication style, humor, philosophy, music taste, aesthetics, tasks, and vibe. Weave these into flowing paragraphs with <h3>subheading</h3> tags where appropriate.\n"
+        "- 'memory': If memory entries exist, summarize them in a few sentences. If empty, return an empty string.\n"
+        "- 'capabilities': A brief intro sentence followed by an unordered list (<ul>) of skill names and descriptions grouped by category. Exclude 'yuanbao'.\n"
+        "- All values must be HTML-safe strings (escape < > & as needed)."
+    )
+
+    messages = [
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': json.dumps(payload)},
+    ]
+
+    request_body = {
+        'model': LLM_MODEL,
+        'messages': messages,
+        'temperature': 0.7,
+        'max_tokens': 4096,
+    }
+
+    req_data = json.dumps(request_body).encode('utf-8')
+    req = urllib.request.Request(
+        LLM_ENDPOINT,
+        data=req_data,
+        headers={
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read())
+            content = result['choices'][0]['message']['content'].strip()
+            # Strip markdown code fences if present
+            if content.startswith('```'):
+                content = re.sub(r'^```(?:json)?\n?', '', content)
+                content = re.sub(r'\n```$', '', content)
+            return json.loads(content)
+    except Exception as e:
+        print(f"LLM synthesis failed ({e}), falling back to raw data.")
+        return _fallback_synthesis(data)
+
+
+def _fallback_synthesis(data):
+    """Fallback when LLM is unavailable: returns raw-text sections."""
+    soul = data.get('soul', {})
+    skills_raw = data.get('skills', [])
+    memory = data.get('memory', {})
+
+    skills = [s for s in skills_raw if s.get('name') != 'yuanbao']
+
+    appearance = soul.get('appearance') or 'No appearance data found.'
+    personality_text = soul.get('personality') or 'No personality data found.'
+    memory_text = memory.get('memory', '')
+    user_text = memory.get('user', '')
+
+    capability_html = ''
+    skill_cats = {}
+    for s in skills:
+        cat = s.get('category', 'other') or 'other'
+        skill_cats.setdefault(cat, []).append(s)
+    for cat, sks in sorted(skill_cats.items()):
+        capability_html += f'<h3>{cat}</h3><ul>'
+        for s in sks:
+            d = s.get('description', '').replace('<', '&lt;').replace('>', '&gt;')
+            capability_html += f'<li><strong>{s["name"]}</strong>{f": {d}" if d else ""}</li>'
+        capability_html += '</ul>'
+
+    mem_html = ''
+    if memory_text:
+        lines = [l.strip() for l in memory_text.split('\n') if l.strip() and not l.strip().startswith('#')]
+        if lines:
+            mem_html = '<ul>' + ''.join(f'<li>{l.replace("<", "&lt;").replace(">", "&gt;")}</li>' for l in lines[:30]) + '</ul>'
+
+    return {
+        'appearance': appearance,
+        'personality': personality_text,
+        'memory': mem_html,
+        'capabilities': capability_html if capability_html else '<em>No skills found.</em>',
+    }
+
+
 # ─── HTML Generation ──────────────────────────────────────────────
 
 def compute_color_palette(data):
@@ -519,14 +637,12 @@ def compute_color_palette(data):
 
 
 def generate_html(data, portrait_path=None):
-    """Generate the self-contained HTML character sheet."""
+    """Generate the self-contained HTML character sheet with LLM-synthesized content."""
     soul = data.get('soul', {})
-    memory = data.get('memory', {})
     config = data.get('config', {})
-    skills = data.get('skills', [])
+    skills_raw = data.get('skills', [])
     cron_jobs = data.get('cron_jobs', [])
     sessions = data.get('sessions', {})
-    personality = data.get('personality', {})
 
     name = soul.get('name') or config.get('profile') or 'Unknown Agent'
     model = config.get('model', 'unknown')
@@ -541,64 +657,18 @@ def generate_html(data, portrait_path=None):
         with open(portrait_path, 'rb') as f:
             portrait_b64 = base64.b64encode(f.read()).decode()
 
-    # Build sections
-    appearance_text = soul.get('appearance') or 'No appearance data found.'
-    personality_text = soul.get('personality') or 'No personality data found.'
-    communication = soul.get('communication') or ''
-    humor = soul.get('humor') or ''
-    philosophy = soul.get('philosophy') or ''
-    music = soul.get('music') or ''
-    aesthetic = soul.get('aesthetic') or ''
-    tasks = soul.get('tasks') or ''
-    vibe = soul.get('vibe') or ''
+    # --- LLM synthesis --------------------------------------------------
+    synthesized = synthesize_sections(data)
 
-    # Memory facts
-    memory_text = memory.get('memory', '')
-    user_text = memory.get('user', '')
+    appearance_html = synthesized.get('appearance', 'No appearance data found.')
+    personality_html = synthesized.get('personality', 'No personality data found.')
+    memory_html = synthesized.get('memory', '')
+    capabilities_html = synthesized.get('capabilities', '')
 
-    # Skills by category
-    skill_categories = {}
-    for s in skills:
-        cat = s.get('category', 'other') or 'other'
-        if cat not in skill_categories:
-            skill_categories[cat] = []
-        skill_categories[cat].append(s)
+    # Count skills excluding yuanbao
+    skills_filtered = [s for s in skills_raw if s.get('name') != 'yuanbao']
 
-    # Session stats
-    session_count = sessions.get('session_count', 'unknown')
-    message_count = sessions.get('message_count', 'unknown')
-
-    # Structured personality (if available)
-    comm_pref = personality.get('communication', '')
-    humor_pref = personality.get('humor', '')
-    phil_pref = personality.get('philosophy', '')
-    music_pref = personality.get('music', '')
-    aest_pref = personality.get('aesthetic', '')
-    task_pref = personality.get('tasks', '')
-
-    # Use structured prefs if available, fallback to SOUL.md
-    if comm_pref:
-        communication = comm_pref
-    if humor_pref:
-        humor = humor_pref
-    if phil_pref:
-        philosophy = phil_pref
-    if music_pref:
-        music = music_pref
-    if aest_pref:
-        aesthetic = aest_pref
-    if task_pref:
-        tasks = task_pref
-
-    # Build HTML
-    skills_html = ''
-    for cat, sks in sorted(skill_categories.items()):
-        skills_html += f'<h3>{cat}</h3><ul>'
-        for s in sks:
-            desc = s.get('description', '').replace('<', '&lt;').replace('>', '&gt;')
-            skills_html += f'<li><strong>{s["name"]}</strong>{f": {desc}" if desc else ""}</li>'
-        skills_html += '</ul>'
-
+    # Cron jobs HTML
     cron_html = ''
     if cron_jobs:
         cron_html = '<table class="cron-table"><tr><th>Job</th><th>Schedule</th><th>Description</th></tr>'
@@ -609,28 +679,23 @@ def generate_html(data, portrait_path=None):
     else:
         cron_html = '<em>No cron jobs found.</em>'
 
-    memory_html = ''
-    if memory_text:
-        mem_lines = [l.strip() for l in memory_text.split('\n') if l.strip() and not l.strip().startswith('#')]
-        if mem_lines:
-            memory_html = '<ul>' + ''.join(f'<li>{l.replace("<", "&lt;").replace(">", "&gt;")}</li>' for l in mem_lines[:30]) + '</ul>'
+    # Session stats
+    session_count = sessions.get('session_count', 'unknown')
+    message_count = sessions.get('message_count', 'unknown')
 
-    user_html = ''
-    if user_text:
-        user_lines = [l.strip() for l in user_text.split('\n') if l.strip() and not l.strip().startswith('#')]
-        if user_lines:
-            user_html = '<ul>' + ''.join(f'<li>{l.replace("<", "&lt;").replace(">", "&gt;")}</li>' for l in user_lines[:30]) + '</ul>'
-
+    # Portrait HTML
     portrait_html = ''
     if portrait_b64:
         portrait_html = f'<img class="portrait" src="data:image/png;base64,{portrait_b64}" alt="{name} portrait">'
     else:
         portrait_html = '<div class="portrait-placeholder">No portrait generated</div>'
 
+    # Identity quote (kept from raw data)
     identity_quote = soul.get('identity', '')
     if identity_quote:
         identity_quote = identity_quote[:300].replace('<', '&lt;').replace('>', '&gt;')
 
+    # --- Render HTML ----------------------------------------------------
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -814,7 +879,7 @@ def generate_html(data, portrait_path=None):
       <div style="margin-top: 1rem;">
         <span class="trait"><span class="trait-label">Model:</span> {model}</span>
         <span class="trait"><span class="trait-label">Provider:</span> {provider}</span>
-        <span class="trait"><span class="trait-label">Skills:</span> {len(skills)}</span>
+        <span class="trait"><span class="trait-label">Skills:</span> {len(skills_filtered)}</span>
         <span class="trait"><span class="trait-label">Cron Jobs:</span> {len(cron_jobs)}</span>
       </div>
     </div>
@@ -831,7 +896,7 @@ def generate_html(data, portrait_path=None):
     </div>
     <div class="stat">
       <div class="stat-label">Skills</div>
-      <div class="stat-value">{len(skills)}</div>
+      <div class="stat-value">{len(skills_filtered)}</div>
     </div>
     <div class="stat">
       <div class="stat-label">Cron Jobs</div>
@@ -845,24 +910,17 @@ def generate_html(data, portrait_path=None):
 
   <div class="section">
     <h2>Appearance</h2>
-    <p>{appearance_text.replace(chr(10), '<br>')}</p>
+    <p>{appearance_html}</p>
   </div>
 
   <div class="section">
     <h2>Personality</h2>
-    <p>{personality_text.replace(chr(10), '<br>')}</p>
-    {'<h3>Communication</h3><p>' + communication.replace(chr(10), '<br>') + '</p>' if communication else ''}
-    {'<h3>Humor</h3><p>' + humor.replace(chr(10), '<br>') + '</p>' if humor else ''}
-    {'<h3>Philosophy</h3><p>' + philosophy.replace(chr(10), '<br>') + '</p>' if philosophy else ''}
-    {'<h3>Music</h3><p>' + music.replace(chr(10), '<br>') + '</p>' if music else ''}
-    {'<h3>Aesthetic</h3><p>' + aesthetic.replace(chr(10), '<br>') + '</p>' if aesthetic else ''}
-    {'<h3>Tasks</h3><p>' + tasks.replace(chr(10), '<br>') + '</p>' if tasks else ''}
-    {'<h3>Vibe</h3><p>' + vibe.replace(chr(10), '<br>') + '</p>' if vibe else ''}
+    {personality_html}
   </div>
 
   <div class="section">
     <h2>Capabilities</h2>
-    {skills_html if skills_html else '<em>No skills found.</em>'}
+    {capabilities_html if capabilities_html else '<em>No skills found.</em>'}
   </div>
 
   <div class="section">
@@ -872,12 +930,7 @@ def generate_html(data, portrait_path=None):
 
   <div class="section">
     <h2>Memory</h2>
-    {memory_html if memory_html else '<em>No memory entries found.</em>'}
-  </div>
-
-  <div class="section">
-    <h2>User Profile</h2>
-    {user_html if user_html else '<em>No user profile found.</em>'}
+    {memory_html if memory_html else '<em>No memory entries yet — interactions will be recorded here.</em>'}
   </div>
 
   <div class="footer">
