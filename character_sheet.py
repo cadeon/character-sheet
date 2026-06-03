@@ -465,13 +465,10 @@ def synthesize_sections(data):
     sessions = data.get('sessions', {})
     personality = data.get('personality', {})
 
-    # Filter out yuanbao skill
-    skills = [s for s in skills_raw if s.get('name') != 'yuanbao']
-
     # Build a clean payload for the LLM
     payload = {
         'soul': {k: v for k, v in soul.items() if k != 'raw'},
-        'skills': skills,
+        'skills': skills_raw,
         'memory': memory,
         'config': config,
         'cron_jobs': cron_jobs,
@@ -484,12 +481,16 @@ def synthesize_sections(data):
         "Respond with valid JSON only. No markdown fences, no explanations. "
         "Keys in the response must be exactly: appearance, personality, memory, capabilities. "
         "Rules:\n"
-        "- Write polished, engaging prose — not raw dumps or bullet lists.\n"
-        "- 'appearance': A vivid paragraph describing the agent's physical appearance based on the data.\n"
-        "- 'personality': Well-crafted prose covering communication style, humor, philosophy, music taste, aesthetics, tasks, and vibe. Weave these into flowing paragraphs with <h3>subheading</h3> tags where appropriate.\n"
-        "- 'memory': If memory entries exist, summarize them in a few sentences. If empty, return an empty string.\n"
-        "- 'capabilities': A brief intro sentence followed by an unordered list (<ul>) of skill names and descriptions grouped by category. Exclude 'yuanbao'.\n"
-        "- All values must be HTML-safe strings (escape < > & as needed)."
+        "- Write polished, concise prose — not raw dumps or bullet lists.\n"
+        "- 'appearance': 2-4 sentences max. If no appearance data, return empty string.\n"
+        "- 'personality': Separate <h3> subsections with ONE short paragraph each (2-3 sentences):\n"
+        "  <h3>Communication</h3><p>...</p><h3>Humor</h3><p>...</p>\n"
+        "  <h3>Philosophy</h3><p>...</p><h3>Music</h3><p>...</p>\n"
+        "  <h3>Tasks</h3><p>...</p><h3>Vibe</h3><p>...</p>\n"
+        "- 'memory': 5-10 most significant memories as <ul><li>...</li></ul>. Skip trivial/operational ones.\n"
+        "- 'capabilities': ALL skills listed with <ul><li><strong>name</strong>: desc</li></ul>. Do not exclude any.\n"
+        "- All values must be HTML-safe strings (escape < > & as needed). "
+        "- If a section has no data, return empty string."
     )
 
     messages = [
@@ -534,7 +535,7 @@ def _fallback_synthesis(data):
     skills_raw = data.get('skills', [])
     memory = data.get('memory', {})
 
-    skills = [s for s in skills_raw if s.get('name') != 'yuanbao']
+    skills_raw = data.get('skills', [])
 
     appearance = soul.get('appearance') or 'No appearance data found.'
     personality_text = soul.get('personality') or 'No personality data found.'
@@ -543,7 +544,7 @@ def _fallback_synthesis(data):
 
     capability_html = ''
     skill_cats = {}
-    for s in skills:
+    for s in skills_raw:
         cat = s.get('category', 'other') or 'other'
         skill_cats.setdefault(cat, []).append(s)
     for cat, sks in sorted(skill_cats.items()):
