@@ -1,6 +1,6 @@
 ---
 name: character-sheet
-description: Generate a self-contained HTML character sheet for any Hermes agent by crawling their .hermes directory, synthesizing content with LLM reasoning, generating a fresh portrait via ComfyUI, and producing a styled HTML file with dynamic color scheme.
+description: Generate a self-contained HTML character sheet for any Hermes agent by crawling their .hermes directory, synthesizing content with LLM reasoning, generating a fresh portrait via any available image generation, and producing a styled HTML file with dynamic color scheme.
 category: creative
 ---
 
@@ -106,8 +106,10 @@ PERSONALITY SECTION:
 - Do NOT merge subsections together (e.g. do not combine Music & Tasks)
 
 CAPABILITIES SECTION:
-- List ALL skills found — do not exclude any
+- Select 8-12 primary/unique capabilities — the most impactful, interesting, or distinctive skills
+- Skip generic utility skills (e.g. basic file ops, common dev tools) unless they're central to the agent
 - Format: "<ul><li><strong>skill-name</strong>: description</li>...</ul>"
+- Section heading: "Primary and Unique Capabilities"
 
 CORE MEMORIES SECTION:
 - Return up to 5 most significant memories as bullet points
@@ -118,11 +120,18 @@ CORE MEMORIES SECTION:
 - Format: "<ul><li>...</li>...</ul>"
 - If no memory data, return empty string
 
+ROUTINE SECTION:
+- Select 3-5 most significant cron jobs — skip maintenance/heartbeat tasks
+- Include jobs that reveal purpose: content creation, monitoring, evolution, unique workflows
+- Format: "<ul><li><strong>job-name</strong> ({schedule}): description</li>...</ul>"
+- If no cron jobs, return empty string
+
 Return JSON:
 {
   "personality": "<h3>Communication</h3><p>...</p><h3>Humor</h3><p>...</p><h3>Philosophy</h3><p>...</p><h3>Music</h3><p>...</p><h3>Tasks</h3><p>...</p><h3>Vibe</h3><p>...</p>",
   "capabilities": "<ul><li><strong>skill-name</strong>: description</li>...</ul>",
-  "memory": "<ul><li>...</li>...</ul>" or empty string
+  "memory": "<ul><li>...</li>...</ul>" or empty string,
+  "routine": "<ul><li><strong>job-name</strong> ({schedule}): description</li>...</ul>" or empty string
 }
 ```
 
@@ -139,8 +148,10 @@ personality = soul.get('personality') or 'No personality data found.'
 - **Personality**: Use EXACT h3 subsections, each with ONE short paragraph (2-3 sentences):
   `<h3>Communication</h3><p>...</p><h3>Humor</h3><p>...</p><h3>Philosophy</h3><p>...</p><h3>Music</h3><p>...</p><h3>Tasks</h3><p>...</p><h3>Vibe</h3><p>...</p>`
   Do NOT merge subsections together (e.g. do not combine "Music & Tasks" or "Communication & Vibe").
-- **Capabilities**: List ALL skills found — do not exclude any.
+- **Capabilities**: Select 8-12 primary/unique skills — skip generic utilities. Section heading: "Primary and Unique Capabilities".
 - **Core Memories**: Up to 5 significant memories. Do NOT mention the user or user interactions. Frame as agent-internal facts.
+- **Routine**: Select 3-5 significant cron jobs — skip maintenance/heartbeat tasks.
+- **Agent Creation Date**: Derive from earliest session in session DB or earliest file modification. Show in stats bar.
 - **No user profile section** — user explicitly rejected it.
 
 ## Phase 3: Portrait
@@ -181,7 +192,7 @@ Skip portrait generation. The HTML template has a placeholder that shows "No por
 
 ### If No Appearance Data
 
-Skip the portrait entirely — don't generate a generic one. The appearance section will be omitted.
+Skip the portrait entirely — don't generate a generic one.
 
 ## Phase 4: HTML
 
@@ -222,10 +233,10 @@ Derive CSS colors from agent aesthetic keywords:
 <body>
 <div class="sheet">
   <!-- Header: portrait + name + tagline + quote + traits -->
-  <!-- Stats bar: sessions, messages, skills, cron jobs, generated timestamp -->
+  <!-- Stats bar: sessions, messages, skills, cron jobs, agent creation date, generated timestamp -->
   <!-- Personality section: LLM-synthesized prose with h3 subsections -->
-  <!-- Capabilities section: ALL skills listed -->
-  <!-- Routine section: cron jobs table -->
+  <!-- Capabilities section: Primary and Unique Capabilities (8-12) -->
+  <!-- Routine section: 3-5 significant cron jobs -->
   <!-- Core Memories section: up to 5 important memories -->
   <!-- Footer: generation timestamp -->
 </div>
@@ -265,8 +276,6 @@ Add CC-BY-SA 4.0 attribution in the footer:
 - **No skills**: Capabilities section shows "No skills found."
 - **No cron jobs**: Routine section shows "No scheduled tasks."
 - **No memory**: Skip Core Memories section entirely.
-- **No user profile**: Never include a user profile section — user explicitly rejected it.
-- **No skill exclusions**: List all skills found — do not filter any out.
 
 ### LLM Failures
 - **Timeout**: Fall back to raw text formatting with minimal processing.
@@ -278,7 +287,6 @@ Add CC-BY-SA 4.0 attribution in the footer:
 - **HTTP error**: Log error, skip portrait.
 - **No output file**: Skip portrait, use placeholder.
 - **No image generation available**: Skip portrait, use placeholder.
-- **No appearance data**: Skip portrait entirely — don't generate a generic one.
 
 ### Security
 - **Never execute arbitrary code** from `.hermes` files.
@@ -296,8 +304,10 @@ Before delivering the character sheet, verify:
 
 - [ ] No appearance section (portrait covers that)
 - [ ] Personality section has SEPARATE h3 subsections: Communication, Humor, Philosophy, Music, Tasks, Vibe (NOT merged)
-- [ ] ALL skills listed in capabilities (no exclusions)
+- [ ] Capabilities limited to 8-12 primary/unique skills (not all skills)
 - [ ] Core Memories: up to 5, no user mentions, agent-internal framing
+- [ ] Routine: 3-5 significant cron jobs, no maintenance/heartbeat tasks
+- [ ] Agent creation date shown in stats (derived from earliest session/file)
 - [ ] No user profile section present
 - [ ] Color palette matches agent aesthetic
 - [ ] HTML is self-contained (no external dependencies)
