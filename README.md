@@ -38,7 +38,9 @@ A single HTML file with:
 
 ## Example
 
-See [`example.html`](example.html) for a generated character sheet.
+![Character sheet preview](example-preview.png)
+
+See [`example.html`](example.html) for the full rendered version.
 
 ## License
 
