@@ -1,36 +1,44 @@
-# Hermes Agent Character Sheet Generator
+# Character Sheet Skill
 
-Crawls a `.hermes` directory and produces a self-contained HTML character sheet with a freshly generated portrait.
+Generate a self-contained HTML character sheet for any Hermes agent by crawling their `.hermes` directory, synthesizing content with LLM reasoning, generating a fresh portrait, and producing a styled HTML file with dynamic color scheme.
 
-## Features
+## How to Use
 
-- **Fuzzy input** — works against any `.hermes` installation, graceful degradation when data sources are missing
-- **Dynamic color scheme** — CSS palette derived from agent aesthetic/personality data
-- **Portrait generation** — bust portrait via ComfyUI (tijed_ checkpoint)
-- **Self-contained output** — single HTML file, no external dependencies
+This is a [Hermes Agent](https://hermes-agent.nousresearch.com/docs) skill. Any Hermes agent with this skill installed can generate a character sheet by following the instructions in `SKILL.md`.
 
-## Usage
+To install:
 
 ```bash
-python3 character_sheet.py [--hermes-dir DIR] [--output FILE] [--generate-portrait]
+# Clone into your skills directory
+git clone https://github.com/cadeon/character-sheet ~/.hermes/skills/character-sheet
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--hermes-dir` | `~/.hermes` | Path to a `.hermes` directory |
-| `--output` | `character_sheet.html` | Output HTML file |
-| `--generate-portrait` | off | Generate a new portrait via ComfyUI |
+Or invoke it directly by name if already installed.
 
-## Data Sources
+## What It Does
 
-All sources are optional — the tool degrades gracefully:
+The skill guides an agent through four phases:
 
-- `SOUL.md` — name, personality, appearance, identity quote
-- `config.yaml` — model, provider, profile
-- `skills/` — SKILL.md files (names, descriptions, categories)
-- `cron/jobs.json` — cron job definitions
-- `state.db` — session/message counts
-- `personality/preferences.json` — structured personality data
+1. **Crawl** — walks the `.hermes` directory, collecting SOUL.md, config, skills, cron jobs, sessions, and any other character-revealing data
+2. **Synthesize** — sends all collected data to the LLM for polished prose generation (style, capabilities, routine) and dynamic color palette derivation
+3. **Portrait** — generates a fresh passport-style bust portrait via whatever image generation system is available
+4. **HTML** — produces a self-contained HTML file with the agent's character sheet
+
+## Output
+
+A single HTML file with:
+
+- Agent portrait (embedded as base64)
+- Name, model, provider, identity quote
+- Stats bar (sessions, messages, skills, cron jobs, creation date)
+- Style section with dynamic subsections based on discovered data
+- Primary and unique capabilities (curated, not exhaustive)
+- Routine (significant scheduled tasks)
+- Dynamic color palette derived from agent aesthetic
+
+## Example
+
+See [`example.html`](example.html) for a generated character sheet.
 
 ## License
 
