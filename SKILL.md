@@ -149,6 +149,55 @@ Skip portrait generation. The HTML template has a placeholder that shows "No por
 
 Generate a self-contained HTML file with dynamic color scheme.
 
+## Phase 5: PNG Export (Optional)
+
+After generating the HTML, optionally render it to a PNG image using Playwright.
+
+### When to Export
+
+- User explicitly requests a PNG output
+- User asks for a "preview", "screenshot", or "image" of the character sheet
+- You're generating the sheet for a platform that doesn't support HTML (e.g. social media, messaging)
+
+### How to Export
+
+```python
+from playwright.sync_api import sync_playwright
+import base64, os
+
+html_path = '/path/to/character_sheet.html'
+png_path = '/path/to/character_sheet.png'
+
+# Read HTML, replace base64 portrait data URI with file reference for Playwright
+with open(html_path, 'r') as f:
+    html_content = f.read()
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page(viewport={'width': 1200, 'height': 1600})
+    page.set_content(html_content)
+    # Wait for any CSS transitions/animations to complete
+    page.wait_for_timeout(500)
+    page.screenshot(path=png_path, full_page=True)
+    browser.close()
+
+print(f'PNG saved: {png_path}')
+```
+
+### PNG Export Notes
+
+- **Viewport**: Use `1200x1600` or adjust based on content height. `full_page=True` captures the entire document.
+- **Wait time**: Add `page.wait_for_timeout(500)` to let CSS transitions settle.
+- **Base64 images**: Playwright handles inline base64 data URIs fine — no special handling needed.
+- **Dependencies**: Requires `playwright` Python package and Chromium browser. Verify with `python3 -c "from playwright.sync_api import sync_playwright"` before attempting.
+- **Fallback**: If Playwright is unavailable or fails, skip PNG export and deliver HTML only. Inform the user.
+
+### Delivery
+
+When PNG is generated, deliver both files:
+- HTML: self-contained, editable, interactive
+- PNG: static preview for sharing
+
 ### Color Palette
 
 Use the palette returned by the LLM synthesis phase. Apply values to CSS custom properties in the `:root` block.
@@ -246,14 +295,16 @@ Add CC-BY-SA 4.0 attribution in the footer:
 
 Before delivering the character sheet, verify:
 
-- [ ] No appearance section (portrait covers visual representation)
-- [ ] Style section has DYNAMIC subsections discovered from data (not hardcoded)
 - [ ] Capabilities limited to 8-12 primary/unique skills (section: "Primary and Unique Capabilities")
 - [ ] Routine: 3-5 significant cron jobs, maintenance/heartbeat excluded
 - [ ] Stats bar includes agent creation date (earliest session/file)
-- [ ] No user profile section present
 - [ ] Color palette derived by LLM from agent aesthetic
 - [ ] HTML is self-contained (no external dependencies)
 - [ ] CC-BY-SA 4.0 license is in the footer
 - [ ] All content is HTML-escaped
 - [ ] Output file is valid HTML
+- [ ] If requested, PNG export generated and delivered alongside HTML
+
+## References
+
+- `references/playwright-screenshot.md` — rendering HTML to PNG with Playwright.
