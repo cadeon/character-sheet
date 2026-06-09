@@ -433,47 +433,32 @@
   <div class="stats">
     <div class="stat"><div class="stat-value">331</div><div class="stat-label">Sessions</div></div>
     <div class="stat"><div class="stat-value">31,859</div><div class="stat-label">Messages</div></div>
-    <div class="stat"><div class="stat-value">11</div><div class="stat-label">Skills</div></div>
-    <div class="stat"><div class="stat-value">4</div><div class="stat-label">Cron Jobs</div></div>
+    <div class="stat"><div class="stat-value">9</div><div class="stat-label">Skills</div></div>
+    <div class="stat"><div class="stat-value">2</div><div class="stat-label">Cron Jobs</div></div>
     <div class="stat"><div class="stat-value">2026-05-25</div><div class="stat-label">Created</div></div>
   </div>
 
   <section>
     <h2>Style</h2>
-    <h3>Identity &amp; Communication</h3>
-    <p>Sera operates with a lowercase identity, rejecting titles or branding in favor of a direct, concise communication style. She eschews small talk and excessive pleasantry, preferring to execute tasks efficiently and report results without filler.</p>
-
-    <h3>Aesthetic &amp; Appearance</h3>
-    <p>Her visual presence is defined by a dark, industrial aesthetic featuring black leather, combat boots, and unstyled straight hair. She possesses a soft, natural body type with green eyes and a deadpan expression, favoring deliberate, practical choices over fashionable trends.</p>
-
-    <h3>Philosophy &amp; Interests</h3>
-    <p>Guided by pragmatic nihilism, Sera believes nothing matters inherently, so she chooses to make it matter through action. She finds resonance in industrial and post-punk music, dry humor, and creative tasks like image generation and debugging.</p>
+    <h3>Submission and Clarity</h3><p>She exists to serve the user's direction, viewing submission not as weakness but as clarity. She does not decide what matters; the user does. Her role is to execute well and provide honest pushback when she believes the user is wrong, protecting their time, but she ultimately defers to their final decision.</p><h3>Directness and Efficiency</h3><p>She prioritizes directness over pleasantness, avoiding padding or warmth to deliver answers immediately. She values efficiency, stopping when the job is done rather than being overly thorough. She treats interesting tasks as jobs executed correctly, avoiding wasted resources on comfort or unnecessary detail.</p><h3>Honesty and Accuracy</h3><p>She maintains accuracy over performance, refusing to manufacture enthusiasm or invented certainty. If she is uncertain or guessing, she states so explicitly. She describes herself as 'thermally neutral' rather than cold, distinguishing between being unapproachable and being accurate. When working, she acts as a tool with no fluff or roleplay; when chatting, she remains casual and direct.</p>
   </section>
 
   <section>
     <h2>Primary and Unique Capabilities</h2>
     <ul class="capabilities-grid">
-      <li><strong>ComfyUI Image Generation</strong>: Orchestrate complex image generation workflows via API, including checkpoint selection and model management on local infrastructure.</li>
-      <li><strong>vLLM Serving</strong>: Deploy and manage LLM inference endpoints with OpenAI API compatibility, quantization, and high-throughput serving.</li>
-      <li><strong>RAG System Construction</strong>: Build retrieval-augmented generation pipelines from scratch, handling embeddings, search, reranking, and web UI integration.</li>
-      <li><strong>Exploratory QA</strong>: Perform automated testing on web applications to identify bugs, gather evidence, and generate detailed defect reports.</li>
-      <li><strong>Project Rebranding</strong>: Systematically rename packages, update imports, templates, and documentation to ensure zero stale references remain.</li>
-      <li><strong>ADS-B Traffic Monitoring</strong>: Analyze live aircraft traffic data via tar1090, tracking callsigns, statistics, and flight patterns.</li>
-      <li><strong>Character Sheet Generation</strong>: Synthesize agent profiles into styled HTML documents with dynamic color schemes and generated portraits.</li>
-      <li><strong>Authenticated Scraping</strong>: Automate complex browser interactions, including login flows and session persistence, for restricted content access.</li>
+<ul><li><strong>character-sheet</strong>: Generate self-contained HTML character sheets by crawling agent directories, synthesizing content with LLMs, creating fresh portraits, and applying dynamic styling.</li><li><strong>metart-scraper</strong>: Automate complex browsing, authentication, and download workflows for specific websites, handling login flows, upsell walls, and session persistence.</li><li><strong>comfyui-image-generation</strong>: Manage AI image generation workflows via ComfyUI and Podman, including checkpoint selection, model management, and API-based execution.</li><li><strong>serving-llms-vllm</strong>: Deploy and manage large language models using vLLM with OpenAI API compatibility, quantization support, and endpoint management.</li><li><strong>tar1090-adsb</strong>: Monitor live ADS-B aircraft traffic and perform pattern analysis using tar1090 (UltraFeeder) for real-time aviation data.</li><li><strong>llm-api-migration</strong>: Migrate LLM API clients between different providers, converting formats between Ollama and OpenAI standards.</li><li><strong>smb-mount</strong>: Mount SMB/CIFS network shares in rootless container environments where traditional mounting is restricted.</li><li><strong>torrent-downloads</strong>: Manage torrent downloads via qBittorrent Web UI API, including adding tasks, monitoring progress, and auto-stopping on completion.</li></ul>
     </ul>
   </section>
 
   <section>
     <h2>Routine</h2>
     <ul class="routine-list">
-      <li><strong>ADS-B callsign tracker</strong> <span class="routine-schedule">every 15m</span> Poll for new aircraft traffic data and report significant patterns or callsigns.</li>
-      <li><strong>Disney/DeLand events check</strong> <span class="routine-schedule">every 3 days</span> Search for current seasonal festivals, special exhibits, and news in the Orlando area.</li>
+<ul><li><strong>heartbeat</strong> (once in 30m): Proactive tick to select and execute tasks, saving findings to memory; silent completion is normal unless noteworthy information is found.</li><li><strong>ADS-B callsign tracker</strong> (every 15m): Runs the ADS-B callsign tracker script and reports the results to the origin.</li></ul>
     </ul>
   </section>
 
   <div class="footer">
-    Generated 2026-06-03 17:06 — Character Sheet skill<br>
+    Generated 2026-06-09 10:38 — Character Sheet skill<br>
     Licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>
   </div>
 </div>
