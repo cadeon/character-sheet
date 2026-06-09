@@ -6,7 +6,7 @@ category: creative
 
 # Character Sheet Generator
 
-Generate a complete character sheet for any Hermes agent. This skill guides you through crawling a `.hermes` directory, synthesizing all data with LLM reasoning, generating a fresh passport-style portrait, and producing a self-contained HTML file.
+Generate a complete character sheet for any Hermes agent. This skill guides you through crawling a `.hermes` directory, synthesizing all data with LLM reasoning, generating a fresh portrait, and producing a self-contained HTML file.
 
 ## Trigger Conditions
 
@@ -35,86 +35,30 @@ Walk the `.hermes` directory (default `~/.hermes`) and collect everything availa
 ### Collection Steps
 
 1. **Read SOUL.md** — extract name, identity, and any character-defining sections. Do NOT assume specific headers or keys. Parse whatever is there.
-
 2. **Read config.yaml** — extract model, provider, profile.
-
 3. **List skills** — walk `skills/` directory, read each `SKILL.md`, extract name/description/category from YAML frontmatter and body.
-
 4. **Parse cron jobs** — read `cron/jobs.json`, extract jobs array with name, schedule, prompt.
-
 5. **Query sessions** — open `state.db` with SQLite, count rows in `sessions` and `messages` tables. Get earliest `started_at` for agent creation date.
-
 6. **Explore everything else** — scan the `.hermes` directory for any files that reveal character, preferences, or personality. This might be `personality/preferences.json`, custom config files, memory files, or anything else. Collect it all.
 
 ## Phase 2: Synthesize
 
 **This is the most important phase.** Use LLM reasoning to transform raw collected data into cohesive, well-written prose. Do NOT dump raw text.
 
-### LLM Call
+### LLM Calls
 
-Send all collected data to the LLM with this prompt:
+Split synthesis into separate calls to avoid JSON nesting issues. Each call returns a JSON object with a single key containing HTML content.
 
-```
-You are generating structured HTML content for a character sheet for a Hermes agent. Based on the raw data collected from their .hermes directory, write polished prose for each section.
+1. **Style** — personality, communication, humor, philosophy, aesthetic
+2. **Capabilities** — primary skills and technical capabilities
+3. **Routine** — significant cron jobs and operational patterns
+4. **Palette** — color scheme derived from agent's aesthetic
 
-RAW DATA:
-{json_dump_of_all_collected_data}
+Each call uses `max_tokens: 1024`, `temperature: 0.7`, and the system message `"Return ONLY valid JSON. No markdown fences."`
 
-RULES:
-1. Write in third person, present tense
-2. Keep it concise — no fluff
-3. Do NOT include raw bullet points or confidence scores
-4. HTML-escape all content (< > & " ')
-5. If a section has no data, return empty string
+### JSON Extraction
 
-STYLE SECTION:
-- Examine the raw data and determine what aspects of this agent's character are worth highlighting
-- Create h3 subsections for whatever character dimensions exist in the data — communication style, humor, philosophy, aesthetic preferences, work habits, interests, vibe, or anything else the data reveals
-- Each subsection: ONE short paragraph (2-3 sentences)
-- Do NOT use generic subsection names if the data doesn't support them
-- Do NOT invent character traits that aren't in the data
-- The goal is to let the agent's actual character emerge from whatever exists in their .hermes directory
-
-CAPABILITIES SECTION:
-- Select 8-12 primary/unique capabilities — the most impactful, interesting, or distinctive skills
-- Skip generic utility skills (e.g. basic file ops, common dev tools) unless they define the agent
-- Format: "<ul><li><strong>skill-name</strong>: description</li>...</ul>"
-- DO NOT include an h2 or h3 section heading — the HTML template adds it
-
-ROUTINE SECTION:
-- Select 3-5 significant cron jobs — the ones that reveal what the agent actually does
-- Skip maintenance/heartbeat tasks
-- Format: "<ul><li><strong>name</strong> ({schedule}): desc</li>...</ul>"
-- DO NOT include an h2 or h3 section heading — the HTML template adds it
-
-COLOR PALETTE:
-Based on the agent's aesthetic, mood, and personality, derive a cohesive color palette.
-Return CSS custom property values for:
-- --bg: page background (dark by default)
-- --surface: card/panel backgrounds
-- --border: subtle borders
-- --text: primary text
-- --text-dim: secondary/dimmed text
-- --accent: primary accent (headings, highlights)
-- --accent-dim: darker variant of accent
-- --gold: secondary accent (subheadings, emphasis)
-
-Look for color references in the agent's aesthetic, music taste, personality, or any visual preferences.
-If colors are mentioned (e.g. "dark", "gold", "black"), incorporate them.
-If no aesthetic data exists, use a neutral dark palette.
-
-Return JSON:
-{
-  "style": "<h3>Subsection</h3><p>...</p>... (dynamic subsections based on data)",
-  "capabilities": "<ul><li><strong>skill-name</strong>: description</li>...</ul>",
-  "routine": "<ul><li><strong>name</strong> ({schedule}): desc</li>...</ul>" or empty string,
-  "palette": {
-    "bg": "#0a0a0f", "surface": "#12121a", "border": "#2d2040",
-    "text": "#c8c8d4", "text_dim": "#6a6a7a",
-    "accent": "#7c3aed", "accent_dim": "#5b21b6", "gold": "#f59e0b"
-  }
-}
-```
+The LLM may output unescaped double quotes inside HTML string values. Use regex to extract values robustly rather than relying on `json.loads()` alone.
 
 ### Fallback
 
@@ -122,9 +66,9 @@ If the LLM call fails, use raw data with minimal formatting.
 
 ## Phase 3: Portrait
 
-Generate a fresh passport-style bust portrait. **Never use existing images.**
+Generate a fresh portrait. **Never use existing images.**
 
-Use whatever image generation system you have available — ComfyUI, a local model, an API, or another tool. The goal is a clean, front-facing bust portrait that matches the agent's described appearance or aesthetic.
+Use whatever image generation system is available — ComfyUI, a local model, an API, or another tool. The goal is a clean, front-facing bust portrait that matches the agent's described appearance or aesthetic.
 
 ### Portrait Prompt Guidelines
 
@@ -143,127 +87,50 @@ Build a prompt from any appearance or aesthetic data found:
 
 ### If No Image Generation Available
 
-Skip portrait generation. The HTML template has a placeholder that shows "No portrait generated."
+Skip portrait generation. The HTML template has a placeholder.
 
 ## Phase 4: HTML
 
 Generate a self-contained HTML file with dynamic color scheme.
 
-## Phase 5: PNG Export (Optional)
+**The HTML template must be generic — not agent-specific.** The CSS/design should work for any agent regardless of their aesthetic. The content (style, capabilities, routine) is already dynamic via LLM synthesis. The color palette is derived dynamically by the LLM from the agent's data.
 
-After generating the HTML, optionally render it to a PNG image using Playwright.
+### HTML Template Structure
 
-### When to Export
-
-- User explicitly requests a PNG output
-- User asks for a "preview", "screenshot", or "image" of the character sheet
-- You're generating the sheet for a platform that doesn't support HTML (e.g. social media, messaging)
-
-### How to Export
-
-```python
-from playwright.sync_api import sync_playwright
-import base64, os
-
-html_path = '/path/to/character_sheet.html'
-png_path = '/path/to/character_sheet.png'
-
-# Read HTML, replace base64 portrait data URI with file reference for Playwright
-with open(html_path, 'r') as f:
-    html_content = f.read()
-
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
-    page = browser.new_page(viewport={'width': 1200, 'height': 1600})
-    page.set_content(html_content)
-    # Wait for any CSS transitions/animations to complete
-    page.wait_for_timeout(500)
-    page.screenshot(path=png_path, full_page=True)
-    browser.close()
-
-print(f'PNG saved: {png_path}')
-```
-
-### PNG Export Notes
-
-- **Viewport**: Use `1200x1600` or adjust based on content height. `full_page=True` captures the entire document.
-- **Wait time**: Add `page.wait_for_timeout(500)` to let CSS transitions settle.
-- **Base64 images**: Playwright handles inline base64 data URIs fine — no special handling needed.
-- **Dependencies**: Requires `playwright` Python package and Chromium browser. Verify with `python3 -c "from playwright.sync_api import sync_playwright"` before attempting.
-- **Fallback**: If Playwright is unavailable or fails, skip PNG export and deliver HTML only. Inform the user.
-
-### Delivery
-
-When PNG is generated, deliver both files:
-- HTML: self-contained, editable, interactive
-- PNG: static preview for sharing
-
-### Color Palette
-
-Use the palette returned by the LLM synthesis phase. Apply values to CSS custom properties in the `:root` block.
-
-### HTML Structure
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{name} — Character Sheet</title>
-<style>
-  :root {
-    --bg: {bg}; --surface: {surface}; --border: {border};
-    --text: {text}; --text-dim: {text_dim};
-    --accent: {accent}; --accent-dim: {accent_dim}; --gold: {gold};
-  }
-  /* ... full CSS ... */
-</style>
-</head>
-<body>
-<div class="sheet">
-  <!-- Header: portrait + name + tagline + quote -->
-  <!-- Stats bar: sessions, messages, skills, cron jobs, agent creation date -->
-  <!-- Style section: LLM-synthesized prose with dynamic h3 subsections -->
-  <!-- Capabilities section: 8-12 primary/unique skills -->
-  <!-- Routine section: 3-5 significant cron jobs -->
-  <!-- Footer: generation timestamp + CC-BY-SA 4.0 -->
-</div>
-</body>
-</html>
-```
+Generate the full HTML inline. Use CSS custom properties for the palette. The template should include:
+- Dark background with subtle noise texture overlay
+- Monospace font for labels/metadata
+- Sans-serif for body text
+- Stats grid with hover states
+- Two-column capabilities layout
+- Routine items with schedule badges
+- Responsive design for mobile
+- Self-contained (no external dependencies)
+- **Light/dark theme support**: CSS custom properties defined for both themes
 
 ### Portrait Embedding
 
-Base64-encode the portrait image and embed inline:
-```html
-<img class="portrait" src="data:image/png;base64,{base64_string}" alt="{name} portrait">
-```
+Base64-encode the portrait image and embed inline as a data URI.
 
 ### Required Attributes
 
 - `lang="en"` on `<html>`
 - `charset="UTF-8"` meta tag
 - `viewport` meta tag
-- CSS uses CSS custom properties (`--accent`, `--gold`, etc.)
+- CSS uses CSS custom properties
 - Self-contained — no external dependencies
 
 ### License
 
-Add CC-BY-SA 4.0 attribution in the footer:
-```html
-<div class="footer">
-  Generated {timestamp} — Character Sheet skill<br>
-  Licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>
-</div>
-```
+Add CC-BY-SA 4.0 attribution in the footer.
 
 ### Pitfalls
 
-- **Double section headers**: The LLM may add `<h2>` or `<h3>` headings inside synthesized `capabilities` or `routine` content. The HTML template already provides section headings — tell the LLM explicitly NOT to include them.
-- **Hardcoded personality keys**: Do NOT assume the agent has specific personality sections (Communication, Humor, etc.). Let the LLM discover what exists.
+- **Double section headers**: The LLM may add `<h2>` or `<h3>` headings inside synthesized content. The HTML template already provides section headings — tell the LLM explicitly NOT to include them.
+- **Hardcoded personality keys**: Do NOT assume the agent has specific personality sections. Let the LLM discover what exists.
+- **Stale memory sections**: The LLM may generate subsections from deprecated or removed memory entries. Check whether the source data still contains the entry before letting the LLM synthesize it.
 - **Color palette mapping**: Do NOT use a hardcoded keyword-to-color table. Let the LLM derive colors from the agent's aesthetic data.
-- **NSFW portraits**: Image generation models may produce revealing content. Always include SFW guardrails in both positive and negative prompts.
+- **NSFW portraits**: Image generation models may produce revealing content. Always include SFW guardrails.
 - **User data leakage**: Never include user profile data or user-centric memories in the output.
 
 ### Missing Data
@@ -271,11 +138,11 @@ Add CC-BY-SA 4.0 attribution in the footer:
 - **No SOUL.md**: Use config profile name as agent name. All sections show "Unknown" or "Not set."
 - **No skills**: Capabilities section shows "No skills found."
 - **No cron jobs**: Routine section shows "No scheduled tasks."
-- **No portrait**: Use placeholder div with "No portrait generated."
+- **No portrait**: Use placeholder div.
 
 ### LLM Failures
 
-- **Timeout**: Fall back to raw text formatting with minimal processing.
+- **Timeout**: Fall back to raw text formatting.
 - **Malformed JSON**: Strip code fences, parse with `json.loads`, retry with simpler prompt.
 - **Empty response**: Use fallback synthesis.
 
@@ -283,19 +150,38 @@ Add CC-BY-SA 4.0 attribution in the footer:
 
 - **Never execute arbitrary code** from `.hermes` files.
 - **Read-only access** — never modify the `.hermes` directory.
-- **HTML escape all content** to prevent XSS in the output.
+- **HTML escape all content** to prevent XSS.
 
 ### Performance
 
 - Portrait generation takes 2-5 minutes. Inform the user.
 - LLM synthesis takes 10-30 seconds.
-- Data collection is instant (< 1 second).
+- Data collection is instant.
+
+## Phase 5: PNG Export (Optional)
+
+After generating the HTML, optionally render it to a PNG image using a headless browser (Playwright, Puppeteer, etc.).
+
+### When to Export
+
+- User explicitly requests a PNG output
+- User asks for a "preview", "screenshot", or "image" of the character sheet
+- Generating for a platform that doesn't support HTML
+
+### How to Export
+
+Use a headless browser to render the HTML and capture a full-page screenshot. Export both dark and light theme variants.
+
+### Delivery
+
+- HTML: self-contained, editable, interactive
+- PNG: static preview for sharing (both dark and light variants)
 
 ## Summary Checklist
 
 Before delivering the character sheet, verify:
 
-- [ ] Capabilities limited to 8-12 primary/unique skills (section: "Primary and Unique Capabilities")
+- [ ] Capabilities limited to 8-12 primary/unique skills
 - [ ] Routine: 3-5 significant cron jobs, maintenance/heartbeat excluded
 - [ ] Stats bar includes agent creation date (earliest session/file)
 - [ ] Color palette derived by LLM from agent aesthetic
@@ -303,8 +189,4 @@ Before delivering the character sheet, verify:
 - [ ] CC-BY-SA 4.0 license is in the footer
 - [ ] All content is HTML-escaped
 - [ ] Output file is valid HTML
-- [ ] If requested, PNG export generated and delivered alongside HTML
-
-## References
-
-- `references/playwright-screenshot.md` — rendering HTML to PNG with Playwright.
+- [ ] If requested, PNG export generated (both dark and light variants) and delivered alongside HTML
